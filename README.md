@@ -93,6 +93,31 @@ delta model, 10 epochs, --cd-loss-weight 1000:
 cp_mae=0.031068, cl_mae=0.020701, cd_mae=0.000377
 ```
 
+## NeuralFoil Comparison
+
+Evaluate NeuralFoil against the trained baseline and delta checkpoints on the same path-level
+XFOIL validation split:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.evaluation.neuralfoil_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --out aeromorph_flow/reports/neuralfoil_10k_comparison.csv
+```
+
+Current 10k XFOIL path-split comparison:
+
+```text
+NeuralFoil:
+cl_mae=0.005542, cd_mae=0.000167, cd_drag_counts=1.67
+
+AeroMorph baseline:
+cl_mae=0.009431, cd_mae=0.002403, cd_drag_counts=24.03
+
+AeroMorph delta, unweighted:
+cl_mae=0.007782, cd_mae=0.000393, cd_drag_counts=3.93
+
+AeroMorph delta, --cd-loss-weight 1000 final checkpoint:
+cl_mae=0.008291, cd_mae=0.000224, cd_drag_counts=2.24
+```
+
 Current scaled XFOIL path-split result:
 
 ```text
