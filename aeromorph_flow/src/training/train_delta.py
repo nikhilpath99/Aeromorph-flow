@@ -41,6 +41,19 @@ def evaluate(model: torch.nn.Module, loader: DataLoader, cp_dim: int) -> dict[st
     }
 
 
+def weighted_prediction_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    cp_dim: int,
+    cl_weight: float,
+    cd_weight: float,
+) -> torch.Tensor:
+    cp_loss = torch.mean((pred[:, :cp_dim] - target[:, :cp_dim]) ** 2)
+    cl_loss = torch.mean((pred[:, cp_dim] - target[:, cp_dim]) ** 2)
+    cd_loss = torch.mean((pred[:, cp_dim + 1] - target[:, cp_dim + 1]) ** 2)
+    return cp_loss + cl_weight * cl_loss + cd_weight * cd_loss
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=5)
@@ -53,6 +66,8 @@ def main() -> None:
     parser.add_argument("--xfoil-timeout-s", type=float, default=30.0)
     parser.add_argument("--data", type=Path, default=None, help="Use an existing .npz dataset instead of generating.")
     parser.add_argument("--save-data", type=Path, default=None)
+    parser.add_argument("--cl-loss-weight", type=float, default=1.0)
+    parser.add_argument("--cd-loss-weight", type=float, default=1.0)
     parser.add_argument(
         "--split-by",
         choices=["path", "sample", "ood_thickness_high", "ood_camber_high", "ood_morph_large"],
@@ -105,7 +120,13 @@ def main() -> None:
         train_losses = []
         for x, y in train_loader:
             pred = model(x)
-            loss = torch.mean((pred - y) ** 2)
+            loss = weighted_prediction_loss(
+                pred,
+                y,
+                cp_dim=cp_dim,
+                cl_weight=args.cl_loss_weight,
+                cd_weight=args.cd_loss_weight,
+            )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

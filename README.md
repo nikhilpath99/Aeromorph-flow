@@ -48,6 +48,25 @@ Train the delta model on that same dataset:
 & 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_compare_transitions.npz --epochs 20 --batch-size 16 --hidden-dim 128 --seed 7
 ```
 
+## Drag-Focused Training
+
+Both training scripts support scalar loss weights for the final `Cl` and `Cd` outputs:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_small_2000_transitions.npz --epochs 10 --batch-size 64 --hidden-dim 128 --seed 7 --cd-loss-weight 1000
+```
+
+On the 1864-sample XFOIL path split, increasing the Cd loss weight improved drag accuracy
+while trading off some Cp/Cl accuracy:
+
+```text
+delta model, 10 epochs, unweighted:
+cp_mae=0.023622, cl_mae=0.010968, cd_mae=0.000610
+
+delta model, 10 epochs, --cd-loss-weight 1000:
+cp_mae=0.031068, cl_mae=0.020701, cd_mae=0.000377
+```
+
 Current scaled XFOIL path-split result:
 
 ```text
