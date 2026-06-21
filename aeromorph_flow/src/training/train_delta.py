@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from aeromorph_flow.src.models.delta_model import DeltaMLP
+from aeromorph_flow.src.training.losses import prediction_loss_with_cd_penalty
 from aeromorph_flow.src.training.dataset import (
     DatasetConfig,
     DeltaDataset,
@@ -58,6 +59,7 @@ def main() -> None:
         choices=["path", "sample", "ood_thickness_high", "ood_camber_high", "ood_morph_large"],
         default="path",
     )
+    parser.add_argument("--cd-penalty-weight", type=float, default=0.0)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -97,6 +99,8 @@ def main() -> None:
     input_dim = train_ds.x.shape[1]
     output_dim = train_ds.y.shape[1]
     cp_dim = arrays["delta_cp"].shape[1]
+    cd_index = cp_dim + 1
+    cd_before_input_index = cp_dim * 3 + 1
     model = DeltaMLP(input_dim=input_dim, output_dim=output_dim, hidden_dim=args.hidden_dim)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
@@ -105,7 +109,14 @@ def main() -> None:
         train_losses = []
         for x, y in train_loader:
             pred = model(x)
-            loss = torch.mean((pred - y) ** 2)
+            cd_after_pred = x[:, cd_before_input_index] + pred[:, cd_index]
+            loss = prediction_loss_with_cd_penalty(
+                pred,
+                y,
+                cd_index=cd_index,
+                cd_penalty_weight=args.cd_penalty_weight,
+                cd_after_pred=cd_after_pred,
+            )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
