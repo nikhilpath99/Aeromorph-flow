@@ -1,0 +1,320 @@
+I want you to help me build a Python/PyTorch research codebase for a project called **AeroMorph-Flow**.
+
+The project goal is to build a **retrieval-augmented physics-memory model for morphing airfoil flow prediction**.
+
+The first MVP should use:
+
+* Python
+* PyTorch
+* NumPy
+* SciPy if needed
+* scikit-learn if needed
+* matplotlib
+* pandas
+* optional XFOIL integration, but the code should still run with synthetic/mock data if XFOIL is not installed
+
+Main idea:
+
+Instead of training only:
+
+`airfoil geometry + AoA + Re → Cl, Cd, Cp`
+
+I want to train a model on morphing transitions:
+
+`airfoil_before + airfoil_after + AoA + Re + flow_before → flow_after`
+
+or:
+
+`delta_geometry + AoA + Re + Cp_before → delta_Cp, delta_Cl, delta_Cd`
+
+The model should learn how flow changes when the airfoil geometry morphs.
+
+Build the project in phases.
+
+Important requirements:
+
+1. Create a clean repo structure.
+
+Suggested structure:
+
+```text
+aeromorph_flow/
+    data/
+        raw/
+        processed/
+    notebooks/
+    src/
+        geometry/
+            naca.py
+            morphing.py
+            features.py
+        solvers/
+            xfoil_runner.py
+            mock_solver.py
+        memory/
+            memory_bank.py
+            retrieval.py
+        models/
+            baseline_mlp.py
+            delta_model.py
+            retrieval_model.py
+        training/
+            dataset.py
+            train_baseline.py
+            train_delta.py
+            train_retrieval.py
+        evaluation/
+            metrics.py
+            ood_tests.py
+            plots.py
+        utils/
+            config.py
+            io.py
+    tests/
+    README.md
+    requirements.txt
+```
+
+2. Implement NACA 4-digit airfoil generation.
+
+Functions needed:
+
+```python
+generate_naca4(code: str, n_points: int = 200) -> dict
+```
+
+Return:
+
+* x coordinates
+* upper surface y
+* lower surface y
+* closed airfoil coordinates
+* metadata: camber, camber_position, thickness
+
+3. Implement airfoil morphing.
+
+Function:
+
+```python
+morph_airfoils(airfoil_a, airfoil_b, n_steps: int) -> list
+```
+
+It should produce smooth intermediate airfoils using coordinate interpolation.
+
+Each morphing path should look like:
+
+```text
+airfoil_0 → airfoil_1 → airfoil_2 → ... → airfoil_n
+```
+
+4. Implement a mock aerodynamic solver first.
+
+Because XFOIL may not be installed, create a mock solver that returns plausible synthetic values for:
+
+* Cp distribution
+* Cl
+* Cd
+* Cm
+
+The mock solver does not need to be physically perfect. It should allow the ML pipeline to run end-to-end.
+
+Function:
+
+```python
+solve_airfoil_mock(airfoil, aoa_deg: float, reynolds: float) -> dict
+```
+
+Return:
+
+* cp: array of length n_points
+* cl: float
+* cd: float
+* cm: float
+* converged: bool
+
+Later, create an XFOIL runner wrapper but keep it optional.
+
+5. Build dataset generation.
+
+Generate random NACA 4-digit airfoils and morphing paths between them.
+
+For each consecutive pair in a morphing path, store a transition sample:
+
+```python
+{
+    "geometry_before": ...,
+    "geometry_after": ...,
+    "delta_geometry": ...,
+    "aoa": ...,
+    "re": ...,
+    "cp_before": ...,
+    "cp_after": ...,
+    "delta_cp": ...,
+    "cl_before": ...,
+    "cl_after": ...,
+    "delta_cl": ...,
+    "cd_before": ...,
+    "cd_after": ...,
+    "delta_cd": ...
+}
+```
+
+Save the dataset as `.npz` or `.pt`.
+
+6. Implement baseline model.
+
+Baseline:
+
+```text
+geometry_after + AoA + Re → Cp_after, Cl_after, Cd_after
+```
+
+Use a simple PyTorch MLP.
+
+7. Implement delta model.
+
+Delta model:
+
+```text
+geometry_before + delta_geometry + AoA + Re + Cp_before → delta_Cp, delta_Cl, delta_Cd
+```
+
+Then reconstruct:
+
+```text
+Cp_after = Cp_before + delta_Cp
+Cl_after = Cl_before + delta_Cl
+Cd_after = Cd_before + delta_Cd
+```
+
+8. Implement memory bank.
+
+Each memory item stores:
+
+* embedding
+* delta_geometry
+* AoA
+* Re
+* delta_Cp
+* delta_Cl
+* delta_Cd
+* metadata
+
+Use nearest-neighbor retrieval first with scikit-learn or pure NumPy.
+
+Similarity should initially be based on:
+
+* delta_geometry embedding
+* AoA
+* log(Re)
+* maybe Cp_before embedding
+
+9. Implement retrieval-augmented model.
+
+For each query transition:
+
+* compute query embedding
+* retrieve top-k similar memory items
+* aggregate retrieved memory features
+* feed query features + retrieved features into MLP
+* predict delta_Cp, delta_Cl, delta_Cd
+
+Start simple:
+
+* mean pooling over top-k retrieved memory features
+* later attention can be added
+
+10. Implement training scripts.
+
+Scripts:
+
+* train_baseline.py
+* train_delta.py
+* train_retrieval.py
+
+Each should:
+
+* load dataset
+* split train/validation/test
+* train model
+* save checkpoint
+* print metrics
+
+11. Implement evaluation.
+
+Metrics:
+
+* Cp MSE
+* Cl MAE
+* Cd MAE
+* delta_Cp MSE
+* delta_Cl MAE
+* delta_Cd MAE
+
+Also create OOD splits:
+
+A. In-distribution random split
+B. Geometry OOD:
+
+* train on limited camber/thickness range
+* test on higher camber/thickness range
+
+C. AoA OOD:
+
+* train on AoA from -4 to 8 degrees
+* test on AoA from 10 to 14 degrees
+
+D. Reynolds OOD:
+
+* train on one Reynolds range
+* test on another Reynolds range
+
+12. Add plotting.
+
+Plots:
+
+* original and morphed airfoils
+* Cp_before vs Cp_after vs predicted Cp_after
+* training loss curves
+* baseline vs delta vs retrieval model comparison
+* OOD performance comparison
+
+13. Add README.
+
+README should explain:
+
+* project idea
+* setup
+* how to generate data
+* how to train models
+* how to run evaluation
+* future upgrades:
+
+  * real XFOIL
+  * SU2/OpenFOAM
+  * neural operators
+  * physics-informed loss
+  * uncertainty estimation
+  * active CFD learning
+
+Coding style:
+
+* Keep code modular and readable.
+* Add type hints where useful.
+* Add comments for important logic.
+* Avoid overengineering.
+* Make sure the first version can run end-to-end with mock data.
+* Include simple tests for NACA generation, morphing, memory retrieval, and dataset creation.
+
+Start by creating the full repo structure and implementing the MVP end-to-end with mock solver data. Then give me instructions to run:
+
+```bash
+pip install -r requirements.txt
+python -m src.training.generate_dataset
+python -m src.training.train_baseline
+python -m src.training.train_delta
+python -m src.training.train_retrieval
+python -m src.evaluation.ood_tests
+```
+
+If any file names need to change, keep the structure logical and explain the reason.
