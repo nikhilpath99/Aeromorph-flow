@@ -5,7 +5,7 @@ __pycache__/
 .ruff_cache/
 
 aeromorph_flow/data/
-aeromorph_flow/reports/
+aeromorph_flow/reports*/
 tools/
 *.tar.gz
 
