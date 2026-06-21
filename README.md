@@ -48,6 +48,25 @@ Train the delta model on that same dataset:
 & 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_compare_transitions.npz --epochs 20 --batch-size 16 --hidden-dim 128 --seed 7
 ```
 
+Useful XFOIL quality-control options:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --solver xfoil --xfoil-path 'E:\Code\Aerophflow\tools\Xfoil\bin\xfoil.exe' --xfoil-n-iter 120 --xfoil-timeout-s 60 --samples 64 --epochs 5 --failure-log aeromorph_flow/reports/xfoil_failures.jsonl
+```
+
+Training now saves both the best-validation checkpoint and the final checkpoint:
+
+```text
+aeromorph_flow/data/processed/delta_mlp.pt
+aeromorph_flow/data/processed/delta_mlp_last.pt
+```
+
+Create Cp sanity plots from a generated dataset:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.evaluation.plot_cp_sanity --data aeromorph_flow/data/processed/xfoil_2000_transitions.npz --out-dir aeromorph_flow/reports/cp_sanity --count 8
+```
+
 ## Drag-Focused Training
 
 Both training scripts support scalar loss weights for the final `Cl` and `Cd` outputs:
