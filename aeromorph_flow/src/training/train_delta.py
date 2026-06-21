@@ -55,6 +55,63 @@ def weighted_prediction_loss(
     return cp_loss + cl_weight * cl_loss + cd_weight * cd_loss
 
 
+def path_consistency_step(
+    model: torch.nn.Module,
+    arrays: dict[str, np.ndarray],
+    optimizer: torch.optim.Optimizer,
+    cp_dim: int,
+    weight: float,
+    max_paths: int,
+    seed: int,
+) -> float:
+    if weight <= 0.0:
+        return 0.0
+
+    dataset = DeltaDataset(arrays)
+    x = torch.from_numpy(dataset.x)
+    pred = model(x)
+    path_ids = arrays["path_id"].reshape(-1)
+    unique_paths = np.unique(path_ids)
+    if len(unique_paths) == 0:
+        return 0.0
+
+    rng = np.random.default_rng(seed)
+    if max_paths > 0 and len(unique_paths) > max_paths:
+        unique_paths = rng.choice(unique_paths, size=max_paths, replace=False)
+
+    losses = []
+    for path_id in unique_paths:
+        idx_np = np.where(path_ids == path_id)[0]
+        if len(idx_np) < 2:
+            continue
+        idx_np = idx_np[np.argsort(arrays["step_index"].reshape(-1)[idx_np])]
+        idx = torch.as_tensor(idx_np, dtype=torch.long)
+        pred_endpoint = torch.cat(
+            [
+                torch.sum(pred[idx, :cp_dim], dim=0),
+                torch.sum(pred[idx, cp_dim : cp_dim + 2], dim=0),
+            ]
+        )
+        actual_endpoint_np = np.concatenate(
+            [
+                arrays["cp_after"][idx_np[-1]] - arrays["cp_before"][idx_np[0]],
+                arrays["cl_after"][idx_np[-1]] - arrays["cl_before"][idx_np[0]],
+                arrays["cd_after"][idx_np[-1]] - arrays["cd_before"][idx_np[0]],
+            ]
+        ).astype(np.float32)
+        actual_endpoint = torch.from_numpy(actual_endpoint_np)
+        losses.append(torch.mean((pred_endpoint - actual_endpoint) ** 2))
+
+    if not losses:
+        return 0.0
+
+    loss = weight * torch.mean(torch.stack(losses))
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    return float(loss.detach().cpu())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=5)
@@ -72,6 +129,8 @@ def main() -> None:
     parser.add_argument("--cl-loss-weight", type=float, default=1.0)
     parser.add_argument("--cd-loss-weight", type=float, default=1.0)
     parser.add_argument("--cp-cl-consistency-weight", type=float, default=0.0)
+    parser.add_argument("--path-consistency-weight", type=float, default=0.0)
+    parser.add_argument("--path-consistency-max-paths", type=int, default=256)
     parser.add_argument(
         "--split-by",
         choices=["path", "sample", "ood_thickness_high", "ood_camber_high", "ood_morph_large"],
@@ -154,6 +213,15 @@ def main() -> None:
             loss.backward()
             optimizer.step()
             train_losses.append(loss.item())
+        path_loss = path_consistency_step(
+            model,
+            train_arrays,
+            optimizer,
+            cp_dim=cp_dim,
+            weight=args.path_consistency_weight,
+            max_paths=args.path_consistency_max_paths,
+            seed=args.seed + epoch,
+        )
         metrics = evaluate(model, val_loader, cp_dim=cp_dim)
         if best_metrics is None or metrics["mse"] < best_metrics["mse"]:
             best_metrics = metrics
@@ -161,6 +229,7 @@ def main() -> None:
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
         print(
             f"epoch={epoch:03d} train_mse={np.mean(train_losses):.6f} "
+            f"path_loss={path_loss:.6f} "
             f"val_mse={metrics['mse']:.6f} cp_mae={metrics['cp_mae']:.6f} "
             f"cl_mae={metrics['cl_mae']:.6f} cd_mae={metrics['cd_mae']:.6f}"
         )

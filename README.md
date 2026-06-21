@@ -102,6 +102,15 @@ The delta trainer also supports a pressure-lift consistency regularizer:
 This term encourages the scalar `delta_Cl` prediction to agree with an approximate chordwise
 integral of predicted `delta_Cp_lower - delta_Cp_upper`.
 
+For morphing-specific physics, the delta trainer can also regularize path composition:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --path-consistency-weight 0.1 --path-consistency-max-paths 256
+```
+
+This adds an epoch-level loss where summed one-step predicted deltas over a morph path are
+matched to the actual endpoint delta.
+
 ## NeuralFoil Comparison
 
 Evaluate NeuralFoil against the trained baseline and delta checkpoints on the same path-level
@@ -131,6 +140,25 @@ cl_mae=0.008339, cd_mae=0.000359, cd_drag_counts=3.59
 
 AeroMorph delta, --cp-cl-consistency-weight 1.0 --cd-loss-weight 1000 final checkpoint:
 cl_mae=0.008232, cd_mae=0.000224, cd_drag_counts=2.24
+
+AeroMorph delta, --path-consistency-weight 0.1 --cd-loss-weight 1000:
+cl_mae=0.008089, cd_mae=0.000279, cd_drag_counts=2.79
+```
+
+Path-consistency endpoint reconstruction on 490 held-out morph paths:
+
+```text
+delta unweighted:
+endpoint_cp_mae=0.024147, endpoint_cl_error=0.019794, endpoint_cd_error=0.001086
+
+delta, --cp-cl-consistency-weight 1.0:
+endpoint_cp_mae=0.023691, endpoint_cl_error=0.023743, endpoint_cd_error=0.000993
+
+delta, --path-consistency-weight 0.1:
+endpoint_cp_mae=0.022975, endpoint_cl_error=0.019230, endpoint_cd_error=0.002320
+
+delta, --path-consistency-weight 0.1 --cd-loss-weight 1000:
+endpoint_cp_mae=0.031702, endpoint_cl_error=0.021330, endpoint_cd_error=0.000791
 ```
 
 Current scaled XFOIL path-split result:
