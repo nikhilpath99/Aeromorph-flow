@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from aeromorph_flow.src.models.delta_model import DeltaMLP
-from aeromorph_flow.src.training.losses import prediction_loss_with_cd_penalty
+from aeromorph_flow.src.training.losses import cp_cl_consistency_loss, prediction_loss_with_cd_penalty
 from aeromorph_flow.src.training.dataset import (
     DatasetConfig,
     DeltaDataset,
@@ -71,6 +71,7 @@ def main() -> None:
     parser.add_argument("--save-data", type=Path, default=None)
     parser.add_argument("--cl-loss-weight", type=float, default=1.0)
     parser.add_argument("--cd-loss-weight", type=float, default=1.0)
+    parser.add_argument("--cp-cl-consistency-weight", type=float, default=0.0)
     parser.add_argument(
         "--split-by",
         choices=["path", "sample", "ood_thickness_high", "ood_camber_high", "ood_morph_large"],
@@ -147,6 +148,8 @@ def main() -> None:
                     cd_penalty_weight=args.cd_penalty_weight,
                     cd_after_pred=cd_after_pred,
                 ) - torch.mean((pred - y) ** 2)
+            if args.cp_cl_consistency_weight > 0.0:
+                loss = loss + args.cp_cl_consistency_weight * cp_cl_consistency_loss(pred, cp_dim=cp_dim)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

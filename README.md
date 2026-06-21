@@ -93,6 +93,15 @@ delta model, 10 epochs, --cd-loss-weight 1000:
 cp_mae=0.031068, cl_mae=0.020701, cd_mae=0.000377
 ```
 
+The delta trainer also supports a pressure-lift consistency regularizer:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --cp-cl-consistency-weight 1.0
+```
+
+This term encourages the scalar `delta_Cl` prediction to agree with an approximate chordwise
+integral of predicted `delta_Cp_lower - delta_Cp_upper`.
+
 ## NeuralFoil Comparison
 
 Evaluate NeuralFoil against the trained baseline and delta checkpoints on the same path-level
@@ -116,6 +125,12 @@ cl_mae=0.007782, cd_mae=0.000393, cd_drag_counts=3.93
 
 AeroMorph delta, --cd-loss-weight 1000 final checkpoint:
 cl_mae=0.008291, cd_mae=0.000224, cd_drag_counts=2.24
+
+AeroMorph delta, --cp-cl-consistency-weight 1.0:
+cl_mae=0.008339, cd_mae=0.000359, cd_drag_counts=3.59
+
+AeroMorph delta, --cp-cl-consistency-weight 1.0 --cd-loss-weight 1000 final checkpoint:
+cl_mae=0.008232, cd_mae=0.000224, cd_drag_counts=2.24
 ```
 
 Current scaled XFOIL path-split result:
