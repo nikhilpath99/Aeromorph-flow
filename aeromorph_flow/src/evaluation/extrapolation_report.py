@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from aeromorph_flow.src.models.baseline_mlp import MLP
 from aeromorph_flow.src.models.delta_model import DeltaMLP
+from aeromorph_flow.src.training.losses import prediction_loss_with_cd_penalty
 from aeromorph_flow.src.training.dataset import (
     BaselineDataset,
     DeltaDataset,
@@ -40,7 +41,15 @@ def _make_split(arrays: dict[str, np.ndarray], split_name: str):
     return split_arrays_extrapolation(arrays, mode=split_name)
 
 
-def _train_model(model: torch.nn.Module, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
+def _train_model(
+    model: torch.nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    epochs: int,
+    cd_index: int,
+    cd_penalty_weight: float = 0.0,
+    cd_before_input_index: int | None = None,
+):
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
     best_state = None
     best_epoch = 0
@@ -50,7 +59,16 @@ def _train_model(model: torch.nn.Module, train_loader: DataLoader, val_loader: D
         model.train()
         for x, y in train_loader:
             pred = model(x)
-            loss = torch.mean((pred - y) ** 2)
+            cd_after_pred = None
+            if cd_before_input_index is not None:
+                cd_after_pred = x[:, cd_before_input_index] + pred[:, cd_index]
+            loss = prediction_loss_with_cd_penalty(
+                pred,
+                y,
+                cd_index=cd_index,
+                cd_penalty_weight=cd_penalty_weight,
+                cd_after_pred=cd_after_pred,
+            )
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -90,18 +108,22 @@ def _baseline_result(
     epochs: int,
     batch_size: int,
     hidden_dim: int,
+    cd_penalty_weight: float,
 ) -> ModelResult:
     train_ds = BaselineDataset(train_arrays)
     val_ds = BaselineDataset(val_arrays)
     model = MLP(train_ds.x.shape[1], train_ds.y.shape[1], hidden_dim=hidden_dim)
+    cp_dim = val_arrays["cp_after"].shape[1]
+    cd_index = cp_dim + 1
     best_epoch, best_mse = _train_model(
         model,
         DataLoader(train_ds, batch_size=batch_size, shuffle=True),
         DataLoader(val_ds, batch_size=batch_size),
         epochs=epochs,
+        cd_index=cd_index,
+        cd_penalty_weight=cd_penalty_weight,
     )
     pred = _predict(model, val_ds, batch_size=batch_size)
-    cp_dim = val_arrays["cp_after"].shape[1]
     cp_pred = pred[:, :cp_dim]
     cl_pred = pred[:, cp_dim : cp_dim + 1]
     cd_pred = pred[:, cp_dim + 1 : cp_dim + 2]
@@ -139,18 +161,24 @@ def _delta_result(
     epochs: int,
     batch_size: int,
     hidden_dim: int,
+    cd_penalty_weight: float,
 ) -> ModelResult:
     train_ds = DeltaDataset(train_arrays)
     val_ds = DeltaDataset(val_arrays)
     model = DeltaMLP(train_ds.x.shape[1], train_ds.y.shape[1], hidden_dim=hidden_dim)
+    cp_dim = val_arrays["delta_cp"].shape[1]
+    cd_index = cp_dim + 1
+    cd_before_input_index = cp_dim * 3 + 1
     best_epoch, best_mse = _train_model(
         model,
         DataLoader(train_ds, batch_size=batch_size, shuffle=True),
         DataLoader(val_ds, batch_size=batch_size),
         epochs=epochs,
+        cd_index=cd_index,
+        cd_penalty_weight=cd_penalty_weight,
+        cd_before_input_index=cd_before_input_index,
     )
     pred_delta = _predict(model, val_ds, batch_size=batch_size)
-    cp_dim = val_arrays["delta_cp"].shape[1]
     cp_pred = val_arrays["cp_before"] + pred_delta[:, :cp_dim]
     cl_pred = val_arrays["cl_before"] + pred_delta[:, cp_dim : cp_dim + 1]
     cd_pred = val_arrays["cd_before"] + pred_delta[:, cp_dim + 1 : cp_dim + 2]
@@ -305,6 +333,7 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--hidden-dim", type=int, default=128)
+    parser.add_argument("--cd-penalty-weight", type=float, default=0.0)
     parser.add_argument(
         "--splits",
         nargs="+",
@@ -322,14 +351,32 @@ def main() -> None:
         train_arrays, val_arrays = _make_split(arrays, split_name)
         print(f"split={split_name} train_n={len(next(iter(train_arrays.values())))} val_n={len(next(iter(val_arrays.values())))}")
         results.append(
-            _baseline_result(arrays, split_name, train_arrays, val_arrays, args.epochs, args.batch_size, args.hidden_dim)
+            _baseline_result(
+                arrays,
+                split_name,
+                train_arrays,
+                val_arrays,
+                args.epochs,
+                args.batch_size,
+                args.hidden_dim,
+                args.cd_penalty_weight,
+            )
         )
         print(
             f"{split_name} baseline cp_mae={results[-1].cp_mae:.6f} "
             f"cl_mae={results[-1].cl_mae:.6f} cd_mae={results[-1].cd_mae:.6f}"
         )
         results.append(
-            _delta_result(arrays, split_name, train_arrays, val_arrays, args.epochs, args.batch_size, args.hidden_dim)
+            _delta_result(
+                arrays,
+                split_name,
+                train_arrays,
+                val_arrays,
+                args.epochs,
+                args.batch_size,
+                args.hidden_dim,
+                args.cd_penalty_weight,
+            )
         )
         print(
             f"{split_name} delta cp_mae={results[-1].cp_mae:.6f} "

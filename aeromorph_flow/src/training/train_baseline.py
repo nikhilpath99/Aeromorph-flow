@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from aeromorph_flow.src.models.baseline_mlp import MLP
+from aeromorph_flow.src.training.losses import prediction_loss_with_cd_penalty
 from aeromorph_flow.src.training.dataset import (
     BaselineDataset,
     DatasetConfig,
@@ -73,6 +74,7 @@ def main() -> None:
         choices=["path", "sample", "ood_thickness_high", "ood_camber_high", "ood_morph_large"],
         default="path",
     )
+    parser.add_argument("--cd-penalty-weight", type=float, default=0.0)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -111,6 +113,7 @@ def main() -> None:
     input_dim = train_ds.x.shape[1]
     output_dim = train_ds.y.shape[1]
     cp_dim = arrays["cp_after"].shape[1]
+    cd_index = cp_dim + 1
     model = MLP(input_dim=input_dim, output_dim=output_dim, hidden_dim=args.hidden_dim)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
@@ -126,6 +129,13 @@ def main() -> None:
                 cl_weight=args.cl_loss_weight,
                 cd_weight=args.cd_loss_weight,
             )
+            if args.cd_penalty_weight > 0.0:
+                loss = loss + prediction_loss_with_cd_penalty(
+                    pred,
+                    y,
+                    cd_index=cd_index,
+                    cd_penalty_weight=args.cd_penalty_weight,
+                ) - torch.mean((pred - y) ** 2)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

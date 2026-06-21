@@ -111,6 +111,8 @@ class DeltaDataset(Dataset):
                 arrays["geometry_before"],
                 arrays["delta_geometry"],
                 arrays["cp_before"],
+                arrays["cl_before"],
+                arrays["cd_before"],
                 arrays["aoa"],
                 arrays["log_re"],
             ],
