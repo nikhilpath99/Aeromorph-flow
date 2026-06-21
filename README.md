@@ -67,6 +67,13 @@ Create Cp sanity plots from a generated dataset:
 & 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.evaluation.plot_cp_sanity --data aeromorph_flow/data/processed/xfoil_2000_transitions.npz --out-dir aeromorph_flow/reports/cp_sanity --count 8
 ```
 
+For larger datasets, use the resumable batched generator. It writes chunk files first, skips
+existing chunks on rerun, and then merges converged transitions into one `.npz` file:
+
+```powershell
+& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.generate_xfoil_batched --target-transitions 10000 --batch-paths 250 --n-steps 5 --n-points 96 --seed 41 --xfoil-path 'E:\Code\Aerophflow\tools\Xfoil\bin\xfoil.exe' --xfoil-timeout-s 60 --xfoil-n-iter 120 --out aeromorph_flow/data/processed/xfoil_10k_transitions.npz --work-dir aeromorph_flow/data/processed/xfoil_10k_chunks --failure-log-dir aeromorph_flow/reports/xfoil_10k_failures
+```
+
 ## Drag-Focused Training
 
 Both training scripts support scalar loss weights for the final `Cl` and `Cd` outputs:
