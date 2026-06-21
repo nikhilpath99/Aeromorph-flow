@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -25,6 +27,8 @@ class DatasetConfig:
     solver: str = "mock"
     xfoil_path: str | None = None
     xfoil_timeout_s: float = 30.0
+    xfoil_n_iter: int = 100
+    failure_log_path: str | None = None
 
 
 def random_naca_params(rng: np.random.Generator) -> np.ndarray:
@@ -49,6 +53,7 @@ def generate_transition_dataset(config: DatasetConfig) -> dict[str, np.ndarray]:
 
     rng = np.random.default_rng(config.seed)
     rows = []
+    failures = []
     for path_id in range(config.n_paths):
         a = generate_naca4_from_params(random_naca_params(rng), n_points=config.n_points)
         b = generate_naca4_from_params(random_naca_params(rng), n_points=config.n_points)
@@ -56,7 +61,7 @@ def generate_transition_dataset(config: DatasetConfig) -> dict[str, np.ndarray]:
         aoa = float(rng.uniform(config.aoa_min, config.aoa_max))
         reynolds = float(np.exp(rng.uniform(np.log(config.re_min), np.log(config.re_max))))
         flows = []
-        for airfoil in path:
+        for solve_index, airfoil in enumerate(path):
             try:
                 if config.solver == "xfoil":
                     flow = solve_airfoil_xfoil(
@@ -64,12 +69,25 @@ def generate_transition_dataset(config: DatasetConfig) -> dict[str, np.ndarray]:
                         aoa,
                         reynolds,
                         xfoil_path=config.xfoil_path,
+                        n_iter=config.xfoil_n_iter,
                         timeout_s=config.xfoil_timeout_s,
                     )
                 else:
                     flow = solve_airfoil_mock(airfoil, aoa, reynolds)
-            except Exception:
-                flow = {"converged": False}
+            except Exception as exc:
+                flow = {"converged": False, "error": str(exc)}
+                failures.append(
+                    {
+                        "path_id": path_id,
+                        "solve_index": solve_index,
+                        "aoa": aoa,
+                        "reynolds": reynolds,
+                        "m": float(airfoil["params"][0]),
+                        "p": float(airfoil["params"][1]),
+                        "t": float(airfoil["params"][2]),
+                        "error": str(exc),
+                    }
+                )
             flows.append(flow)
 
         for step_index, (before, after) in enumerate(zip(path[:-1], path[1:])):
@@ -82,7 +100,11 @@ def generate_transition_dataset(config: DatasetConfig) -> dict[str, np.ndarray]:
                 {
                     **feats,
                     "aoa": np.array([aoa], dtype=np.float32),
+                    "reynolds": np.array([reynolds], dtype=np.float32),
                     "log_re": np.array([np.log10(reynolds)], dtype=np.float32),
+                    "solver_id": np.array([0 if config.solver == "mock" else 1], dtype=np.int64),
+                    "xfoil_n_iter": np.array([config.xfoil_n_iter], dtype=np.int64),
+                    "xfoil_timeout_s": np.array([config.xfoil_timeout_s], dtype=np.float32),
                     "cp_before": flow_before["cp"],
                     "cp_after": flow_after["cp"],
                     "delta_cp": flow_after["cp"] - flow_before["cp"],
@@ -92,6 +114,9 @@ def generate_transition_dataset(config: DatasetConfig) -> dict[str, np.ndarray]:
                     "cd_before": np.array([flow_before["cd"]], dtype=np.float32),
                     "cd_after": np.array([flow_after["cd"]], dtype=np.float32),
                     "delta_cd": np.array([flow_after["cd"] - flow_before["cd"]], dtype=np.float32),
+                    "cm_before": np.array([flow_before["cm"]], dtype=np.float32),
+                    "cm_after": np.array([flow_after["cm"]], dtype=np.float32),
+                    "delta_cm": np.array([flow_after["cm"] - flow_before["cm"]], dtype=np.float32),
                     "path_id": np.array([path_id], dtype=np.int64),
                     "step_index": np.array([step_index], dtype=np.int64),
                 }
@@ -100,7 +125,18 @@ def generate_transition_dataset(config: DatasetConfig) -> dict[str, np.ndarray]:
     if not rows:
         raise RuntimeError(f"No converged transition samples were generated with solver={config.solver!r}.")
 
-    return {key: np.stack([row[key] for row in rows]) for key in rows[0].keys()}
+    if config.failure_log_path is not None:
+        failure_log_path = Path(config.failure_log_path)
+        failure_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with failure_log_path.open("w", encoding="utf-8") as handle:
+            for failure in failures:
+                handle.write(json.dumps(failure, sort_keys=True) + "\n")
+
+    arrays = {key: np.stack([row[key] for row in rows]) for key in rows[0].keys()}
+    arrays["failure_count"] = np.array([len(failures)], dtype=np.int64)
+    arrays["requested_paths"] = np.array([config.n_paths], dtype=np.int64)
+    arrays["requested_steps"] = np.array([config.n_steps], dtype=np.int64)
+    return arrays
 
 
 class DeltaDataset(Dataset):
@@ -160,8 +196,8 @@ def split_arrays(arrays: dict[str, np.ndarray], val_fraction: float = 0.2, seed:
     n_val = max(1, int(n * val_fraction))
     val_idx = idx[:n_val]
     train_idx = idx[n_val:]
-    train = {key: value[train_idx] for key, value in arrays.items()}
-    val = {key: value[val_idx] for key, value in arrays.items()}
+    train = {key: value[train_idx] if len(value) == n else value for key, value in arrays.items()}
+    val = {key: value[val_idx] if len(value) == n else value for key, value in arrays.items()}
     return train, val
 
 
@@ -179,8 +215,9 @@ def split_arrays_by_path(arrays: dict[str, np.ndarray], val_fraction: float = 0.
     train_mask = ~val_mask
     if not np.any(train_mask) or not np.any(val_mask):
         return split_arrays(arrays, val_fraction=val_fraction, seed=seed)
-    train = {key: value[train_mask] for key, value in arrays.items()}
-    val = {key: value[val_mask] for key, value in arrays.items()}
+    n = len(path_ids)
+    train = {key: value[train_mask] if len(value) == n else value for key, value in arrays.items()}
+    val = {key: value[val_mask] if len(value) == n else value for key, value in arrays.items()}
     return train, val
 
 
@@ -210,6 +247,7 @@ def split_arrays_extrapolation(arrays: dict[str, np.ndarray], mode: str):
             f"Split {mode!r} produced train_n={int(np.sum(train_mask))}, "
             f"val_n={int(np.sum(val_mask))}."
         )
-    train = {key: value[train_mask] for key, value in arrays.items()}
-    val = {key: value[val_mask] for key, value in arrays.items()}
+    n = len(train_mask)
+    train = {key: value[train_mask] if len(value) == n else value for key, value in arrays.items()}
+    val = {key: value[val_mask] if len(value) == n else value for key, value in arrays.items()}
     return train, val

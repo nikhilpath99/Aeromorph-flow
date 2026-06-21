@@ -160,4 +160,9 @@ def solve_airfoil_xfoil(
             "cd": float(polar["cd"]),
             "cm": float(polar["cm"]),
             "converged": True,
+            "solver": "xfoil",
+            "xfoil_path": executable,
+            "n_iter": int(n_iter),
+            "timeout_s": float(timeout_s),
+            "stdout_tail": proc.stdout[-2000:],
         }

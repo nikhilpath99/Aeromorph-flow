@@ -52,6 +52,8 @@ def main() -> None:
     parser.add_argument("--solver", choices=["mock", "xfoil"], default="mock")
     parser.add_argument("--xfoil-path", type=str, default=None)
     parser.add_argument("--xfoil-timeout-s", type=float, default=30.0)
+    parser.add_argument("--xfoil-n-iter", type=int, default=100)
+    parser.add_argument("--failure-log", type=Path, default=None)
     parser.add_argument("--data", type=Path, default=None, help="Use an existing .npz dataset instead of generating.")
     parser.add_argument("--save-data", type=Path, default=None)
     parser.add_argument(
@@ -76,6 +78,8 @@ def main() -> None:
             solver=args.solver,
             xfoil_path=args.xfoil_path,
             xfoil_timeout_s=args.xfoil_timeout_s,
+            xfoil_n_iter=args.xfoil_n_iter,
+            failure_log_path=str(args.failure_log) if args.failure_log is not None else None,
         )
         save_data = args.save_data
         if save_data is None:
@@ -103,6 +107,9 @@ def main() -> None:
     cd_before_input_index = cp_dim * 3 + 1
     model = DeltaMLP(input_dim=input_dim, output_dim=output_dim, hidden_dim=args.hidden_dim)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    best_metrics = None
+    best_epoch = 0
+    best_state = None
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -122,6 +129,10 @@ def main() -> None:
             optimizer.step()
             train_losses.append(loss.item())
         metrics = evaluate(model, val_loader, cp_dim=cp_dim)
+        if best_metrics is None or metrics["mse"] < best_metrics["mse"]:
+            best_metrics = metrics
+            best_epoch = epoch
+            best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
         print(
             f"epoch={epoch:03d} train_mse={np.mean(train_losses):.6f} "
             f"val_mse={metrics['mse']:.6f} cp_mae={metrics['cp_mae']:.6f} "
@@ -130,9 +141,20 @@ def main() -> None:
 
     model_path = Path("aeromorph_flow/data/processed/delta_mlp.pt")
     model_path.parent.mkdir(parents=True, exist_ok=True)
+    last_model_path = model_path.with_name("delta_mlp_last.pt")
+    torch.save({"model_state": model.state_dict(), "input_dim": input_dim, "output_dim": output_dim}, last_model_path)
+    if best_state is not None:
+        model.load_state_dict(best_state)
     torch.save({"model_state": model.state_dict(), "input_dim": input_dim, "output_dim": output_dim}, model_path)
     print(f"saved_data={save_data}")
     print(f"saved_model={model_path}")
+    print(f"saved_last_model={last_model_path}")
+    if best_metrics is not None:
+        print(
+            f"best_epoch={best_epoch:03d} best_val_mse={best_metrics['mse']:.6f} "
+            f"best_cp_mae={best_metrics['cp_mae']:.6f} best_cl_mae={best_metrics['cl_mae']:.6f} "
+            f"best_cd_mae={best_metrics['cd_mae']:.6f}"
+        )
 
 
 if __name__ == "__main__":
