@@ -76,32 +76,32 @@ Can a small prototype beat NeuralFoil globally?
 
 Install dependencies:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m pip install -r requirements.txt
+```bash
+python -m pip install -r requirements.txt
 ```
 
 Run a mock-data smoke test:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --epochs 5 --samples 128
+```bash
+python -m aeromorph_flow.src.training.train_delta --epochs 5 --samples 128
 ```
 
 Generate a resumable XFOIL dataset:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.generate_xfoil_batched --target-transitions 10000 --batch-paths 250 --n-steps 5 --n-points 96 --seed 41 --xfoil-path 'E:\Code\Aerophflow\tools\Xfoil\bin\xfoil.exe' --xfoil-timeout-s 60 --xfoil-n-iter 120 --out aeromorph_flow/data/processed/xfoil_10k_transitions.npz --work-dir aeromorph_flow/data/processed/xfoil_10k_chunks --failure-log-dir aeromorph_flow/reports/xfoil_10k_failures
+```bash
+python -m aeromorph_flow.src.training.generate_xfoil_batched --target-transitions 10000 --batch-paths 250 --n-steps 5 --n-points 96 --seed 41 --xfoil-path /path/to/xfoil --xfoil-timeout-s 60 --xfoil-n-iter 120 --out aeromorph_flow/data/processed/xfoil_10k_transitions.npz --work-dir aeromorph_flow/data/processed/xfoil_10k_chunks --failure-log-dir aeromorph_flow/reports/xfoil_10k_failures
 ```
 
 Train the delta model:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7
+```bash
+python -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7
 ```
 
 Evaluate NeuralFoil and AeroMorph checkpoints:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.evaluation.neuralfoil_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --out aeromorph_flow/reports/neuralfoil_10k_comparison.csv
+```bash
+python -m aeromorph_flow.src.evaluation.neuralfoil_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --out aeromorph_flow/reports/neuralfoil_10k_comparison.csv
 ```
 
 ## Repository Layout

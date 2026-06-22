@@ -6,8 +6,8 @@ This file keeps detailed results and commands out of the main README.
 
 Generated with the resumable batched XFOIL generator:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.generate_xfoil_batched --target-transitions 10000 --batch-paths 250 --n-steps 5 --n-points 96 --seed 41 --xfoil-path 'E:\Code\Aerophflow\tools\Xfoil\bin\xfoil.exe' --xfoil-timeout-s 60 --xfoil-n-iter 120 --out aeromorph_flow/data/processed/xfoil_10k_transitions.npz --work-dir aeromorph_flow/data/processed/xfoil_10k_chunks --failure-log-dir aeromorph_flow/reports/xfoil_10k_failures
+```bash
+python -m aeromorph_flow.src.training.generate_xfoil_batched --target-transitions 10000 --batch-paths 250 --n-steps 5 --n-points 96 --seed 41 --xfoil-path /path/to/xfoil --xfoil-timeout-s 60 --xfoil-n-iter 120 --out aeromorph_flow/data/processed/xfoil_10k_transitions.npz --work-dir aeromorph_flow/data/processed/xfoil_10k_chunks --failure-log-dir aeromorph_flow/reports/xfoil_10k_failures
 ```
 
 Summary:
@@ -71,36 +71,36 @@ endpoint_cp_mae=0.031702, endpoint_cl_error=0.021330, endpoint_cd_error=0.000791
 
 Train absolute baseline:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7
+```bash
+python -m aeromorph_flow.src.training.train_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7
 ```
 
 Train unweighted delta:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7
+```bash
+python -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7
 ```
 
 Train Cd-weighted delta:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --cd-loss-weight 1000
+```bash
+python -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --cd-loss-weight 1000
 ```
 
 Train pressure-lift consistency delta:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --cp-cl-consistency-weight 1.0
+```bash
+python -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --cp-cl-consistency-weight 1.0
 ```
 
 Train path-consistency delta:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --path-consistency-weight 0.1 --path-consistency-max-paths 256
+```bash
+python -m aeromorph_flow.src.training.train_delta --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --hidden-dim 128 --seed 7 --path-consistency-weight 0.1 --path-consistency-max-paths 256
 ```
 
 Evaluate NeuralFoil:
 
-```powershell
-& 'E:\Code\global_venv\Scripts\python.exe' -m aeromorph_flow.src.evaluation.neuralfoil_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --out aeromorph_flow/reports/neuralfoil_10k_comparison.csv
+```bash
+python -m aeromorph_flow.src.evaluation.neuralfoil_baseline --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --out aeromorph_flow/reports/neuralfoil_10k_comparison.csv
 ```
