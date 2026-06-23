@@ -67,6 +67,61 @@ delta, --path-consistency-weight 0.1 --cd-loss-weight 1000:
 endpoint_cp_mae=0.031702, endpoint_cl_error=0.021330, endpoint_cd_error=0.000791
 ```
 
+## OOD Comparison
+
+Generated with:
+
+```bash
+python -m aeromorph_flow.src.evaluation.ood_comparison --data aeromorph_flow/data/processed/xfoil_10k_transitions.npz --epochs 30 --batch-size 128 --splits path ood_thickness_high ood_camber_high ood_morph_large ood_aoa_high ood_re_high --out-dir aeromorph_flow/reports/ood_xfoil_10k
+```
+
+Summary:
+
+```text
+path:
+baseline cd_mae=0.004491
+delta cd_mae=0.000339
+delta_cd_weighted cd_mae=0.000351
+neuralfoil cd_mae=0.000167
+
+ood_thickness_high:
+baseline cd_mae=0.003756
+delta cd_mae=0.000602
+delta_cd_weighted cd_mae=0.000271
+neuralfoil cd_mae=0.000180
+
+ood_camber_high:
+baseline cd_mae=0.003616
+delta cd_mae=0.000994
+delta_cd_weighted cd_mae=0.000585
+neuralfoil cd_mae=0.000273
+
+ood_morph_large:
+baseline cd_mae=0.000943
+delta cd_mae=0.000816
+delta_cd_weighted cd_mae=0.000339
+neuralfoil cd_mae=0.000176
+
+ood_aoa_high:
+baseline cd_mae=0.012048
+delta cd_mae=0.002110
+delta_cd_weighted cd_mae=0.001058
+neuralfoil cd_mae=0.000343
+
+ood_re_high:
+baseline cd_mae=0.003235
+delta cd_mae=0.000772
+delta_cd_weighted cd_mae=0.000493
+neuralfoil cd_mae=0.000159
+```
+
+Interpretation:
+
+- Delta models strongly improve drag prediction over the absolute baseline on every OOD split.
+- Cd weighting is the most robust AeroMorph variant under high thickness, high camber, large morph, high AoA, and high Re.
+- High AoA is the hardest split for AeroMorph drag prediction.
+- NeuralFoil remains the strongest coefficient predictor across these one-step OOD tests.
+
 ## Useful Commands
 
 Train absolute baseline:

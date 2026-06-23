@@ -239,6 +239,14 @@ def split_arrays_extrapolation(arrays: dict[str, np.ndarray], mode: str):
         val_limit = float(np.quantile(morph_norm, 0.90))
         train_mask = morph_norm <= train_limit
         val_mask = morph_norm >= val_limit
+    elif mode == "ood_aoa_high":
+        aoa = arrays["aoa"].reshape(-1)
+        train_mask = aoa <= 5.0
+        val_mask = aoa >= 7.0
+    elif mode == "ood_re_high":
+        log_re = arrays["log_re"].reshape(-1)
+        train_mask = log_re <= 6.0
+        val_mask = log_re >= 6.2
     else:
         raise ValueError(f"Unknown extrapolation split mode: {mode}")
 
