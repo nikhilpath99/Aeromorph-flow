@@ -122,6 +122,44 @@ Interpretation:
 - High AoA is the hardest split for AeroMorph drag prediction.
 - NeuralFoil remains the strongest coefficient predictor across these one-step OOD tests.
 
+## Separation-Risk Proxy Analysis
+
+The OOD comparison also computes pressure-recovery proxies from upper-surface Cp:
+
+```text
+cp_recovery_gradient_upper = (Cp_TE - Cp_min_upper) / (1 - x_Cp_min)
+max_positive_dCpdx_after_min = max positive dCp/dx after suction peak
+```
+
+These are not direct separation labels, but they indicate steep pressure recovery and higher
+adverse-pressure-gradient risk.
+
+Key observations from `separation_proxy_summary.csv`:
+
+```text
+path:
+mean_cp_recovery_gradient_after=1.786
+mean_max_positive_dcpdx_after=12.376
+delta corr(recovery_gradient, Cd error)=0.279
+
+ood_aoa_high:
+mean_cp_recovery_gradient_after=3.128
+mean_max_positive_dcpdx_after=39.503
+delta corr(recovery_gradient, Cd error)=0.756
+delta corr(max_positive_dCpdx, Cd error)=0.752
+
+ood_aoa_high, Cd-weighted delta:
+corr(recovery_gradient, Cd error)=0.131
+corr(max_positive_dCpdx, Cd error)=0.092
+```
+
+Interpretation:
+
+- High-AoA validation samples have much steeper pressure recovery than the normal path split.
+- Delta-model Cd error is strongly correlated with pressure-recovery proxies in the high-AoA split.
+- Cd weighting reduces that correlation substantially, which suggests it is partly correcting the drag sensitivity in adverse-pressure-gradient-like regimes.
+- This supports adding separation/pressure-recovery features or an auxiliary separation-risk head before moving to retrieval.
+
 ## Useful Commands
 
 Train absolute baseline:

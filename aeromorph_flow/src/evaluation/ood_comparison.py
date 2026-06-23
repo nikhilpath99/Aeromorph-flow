@@ -19,6 +19,7 @@ from aeromorph_flow.src.training.dataset import (
 )
 from aeromorph_flow.src.training.train_delta import weighted_prediction_loss
 from aeromorph_flow.src.utils.io import load_npz
+from aeromorph_flow.src.evaluation.separation_proxy import cp_separation_proxy, pearson_corr
 
 
 SPLITS = [
@@ -194,6 +195,8 @@ def _prediction_rows(split: str, model: str, val_arrays: dict[str, np.ndarray], 
     rows = []
     truth_cl = val_arrays["cl_after"].reshape(-1)
     truth_cd = val_arrays["cd_after"].reshape(-1)
+    sep_before = cp_separation_proxy(val_arrays["cp_before"])
+    sep_after = cp_separation_proxy(val_arrays["cp_after"])
     for i in range(len(truth_cl)):
         rows.append(
             {
@@ -207,6 +210,11 @@ def _prediction_rows(split: str, model: str, val_arrays: dict[str, np.ndarray], 
                 "pred_cd": float(cd_pred[i]),
                 "cl_abs_error": float(abs(cl_pred[i] - truth_cl[i])),
                 "cd_abs_error": float(abs(cd_pred[i] - truth_cd[i])),
+                "cp_recovery_gradient_before": float(sep_before["cp_recovery_gradient_upper"][i]),
+                "cp_recovery_gradient_after": float(sep_after["cp_recovery_gradient_upper"][i]),
+                "max_positive_dcpdx_after": float(sep_after["max_positive_dcpdx_upper_after_min"][i]),
+                "cp_min_upper_after": float(sep_after["cp_min_upper"][i]),
+                "x_cp_min_upper_after": float(sep_after["x_cp_min_upper"][i]),
             }
         )
     return rows
@@ -294,6 +302,45 @@ def _write_report(path: Path, data_path: Path, results: list[EvalResult], skippe
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _write_separation_summary(path: Path, prediction_rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for row in prediction_rows:
+        grouped.setdefault((row["split"], row["model"]), []).append(row)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        fieldnames = [
+            "split",
+            "model",
+            "n",
+            "mean_cp_recovery_gradient_after",
+            "mean_max_positive_dcpdx_after",
+            "corr_recovery_gradient_cd_error",
+            "corr_recovery_gradient_cl_error",
+            "corr_max_dcpdx_cd_error",
+            "corr_max_dcpdx_cl_error",
+        ]
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for (split, model), rows in grouped.items():
+            recovery = np.array([row["cp_recovery_gradient_after"] for row in rows], dtype=np.float32)
+            max_dcpdx = np.array([row["max_positive_dcpdx_after"] for row in rows], dtype=np.float32)
+            cd_error = np.array([row["cd_abs_error"] for row in rows], dtype=np.float32)
+            cl_error = np.array([row["cl_abs_error"] for row in rows], dtype=np.float32)
+            writer.writerow(
+                {
+                    "split": split,
+                    "model": model,
+                    "n": len(rows),
+                    "mean_cp_recovery_gradient_after": f"{float(np.mean(recovery)):.8f}",
+                    "mean_max_positive_dcpdx_after": f"{float(np.mean(max_dcpdx)):.8f}",
+                    "corr_recovery_gradient_cd_error": f"{pearson_corr(recovery, cd_error):.8f}",
+                    "corr_recovery_gradient_cl_error": f"{pearson_corr(recovery, cl_error):.8f}",
+                    "corr_max_dcpdx_cd_error": f"{pearson_corr(max_dcpdx, cd_error):.8f}",
+                    "corr_max_dcpdx_cl_error": f"{pearson_corr(max_dcpdx, cl_error):.8f}",
+                }
+            )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=Path, default=Path("aeromorph_flow/data/processed/xfoil_10k_transitions.npz"))
@@ -352,9 +399,11 @@ def main() -> None:
 
     _write_metrics(args.out_dir / "ood_metrics.csv", results)
     _write_predictions(args.out_dir / "ood_predictions.csv", prediction_rows)
+    _write_separation_summary(args.out_dir / "separation_proxy_summary.csv", prediction_rows)
     _write_report(args.out_dir / "ood_report.md", args.data, results, skipped)
     print(f"wrote_metrics={args.out_dir / 'ood_metrics.csv'}")
     print(f"wrote_predictions={args.out_dir / 'ood_predictions.csv'}")
+    print(f"wrote_separation_summary={args.out_dir / 'separation_proxy_summary.csv'}")
     print(f"wrote_report={args.out_dir / 'ood_report.md'}")
 
 
